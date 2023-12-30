@@ -32,7 +32,7 @@ const createSendToken = (user, statusCode, res) => {
   });
 };
 
-//singup a user
+//signup a user
 exports.createUser = catchAsync(async (req, res) => {
   const newUser = await User.create({
     name: req.body.name,
@@ -52,13 +52,28 @@ exports.loginUser = catchAsync(async (req, res, next) => {
     return next(new AppError('Please enter email and password', 400));
   }
 
-  const user = await User.findOne({ email }).select('+password');
+  const user = await User.findOne({ email }).select('+password +active');
 
   if (!user || !(await user.correctPassword(password, user.password))) {
     return next(new AppError('Invalid email or password', 401));
   }
-  createSendToken(user, 201, res);
+
+  if (!user.isActive()) {
+    return next(
+      new AppError('User account deleted! please create new account', 401),
+    );
+  }
+  createSendToken(user, 200, res);
 });
+
+exports.logoutUser = catchAsync(async (req,res,next) =>{
+  res.cookie('jwt','loggedout',{
+    expires: new Date(Date.now()+10*1000),
+    httpOnly:true
+  });
+
+  res.status(200).json({status:'success'});
+})
 
 //protect non loggedin users from using other API's
 exports.protect = catchAsync(async (req, res, next) => {
@@ -69,6 +84,8 @@ exports.protect = catchAsync(async (req, res, next) => {
     req.headers.authorization.startsWith('Bearer')
   ) {
     token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies.jwt) {
+    token = req.cookies.jwt;
   }
 
   if (!token) {
@@ -98,6 +115,36 @@ exports.protect = catchAsync(async (req, res, next) => {
   req.user = freshuser;
   next();
 });
+
+exports.isLoggedIn = async (req, res, next) => {
+  if (req.cookies.jwt) {
+    try {
+      // 1) verify token
+      const decoded = await promisify(jwt.verify)(
+        req.cookies.jwt,
+        process.env.JWT_SECRET
+      );
+
+      // 2) Check if user still exists
+      const currentUser = await User.findById(decoded.id);
+      if (!currentUser) {
+        return next();
+      }
+
+      // 3) Check if user changed password after the token was issued
+      if (currentUser.changedPasswordCheck(decoded.iat)) {
+        return next();
+      }
+
+      // THERE IS A LOGGED IN USER
+      res.locals.user = currentUser;
+      return next();
+    } catch (err) {
+      return next();
+    }
+  }
+  next();
+};
 
 //protect api based on roles
 exports.restrictTo =
@@ -185,13 +232,13 @@ exports.updatePassowrd = catchAsync(async (req, res, next) => {
   const user = await User.findById(req.user.id).select('+password');
 
   //2.chec if posted user is correct
-  if (!(await user.correctPassword(req.body.passwordcurrent, user.password))) {
+  if (!(await user.correctPassword(req.body.passwordCurrent, user.password))) {
     return next(new AppError('Your current password is wrong', 401));
   }
   //3.if so, update user
 
   user.password = req.body.password;
-  user.confirmpassword = req.body.confirmpassword;
+  user.confirmpassword = req.body.passwordConfirm;
 
   await user.save();
   //4. log user in, send JWT

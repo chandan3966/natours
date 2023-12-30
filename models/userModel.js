@@ -18,6 +18,7 @@ const userSchema = new mongoose.Schema(
     },
     photo: {
       type: String,
+      default: 'default.jpg'
     },
     role: {
       type: String,
@@ -82,6 +83,10 @@ userSchema.methods.correctPassword = async function (
 ) {
   return await bcrypt.compare(candidatePassword, userPassword);
 };
+
+userSchema.methods.isActive = function(){
+  return this.active;
+}
 
 userSchema.methods.changedPasswordCheck = function (JWTTimestamp) {
   if (this.passwordChangedAt) {

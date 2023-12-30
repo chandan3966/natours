@@ -1,8 +1,49 @@
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
+const multer = require('multer');
+const sharp = require('sharp');
 const catchAsync = require('../utils/catchAsync');
 const AppError = require('../utils/appError');
 const User = require('../models/userModel');
+const factory = require('./handlerFactory');
+
+// const multerStorage = multer.diskStorage({
+//   destination: (req, file, cb) => {
+//     cb(null, 'public/img/users');
+//   },
+//   filename: (req, file, cb) => {
+//     const ext = file.mimetype.split('/')[1];
+//     cb(null, `user-${req.user.id}-${Date.now()}.${ext}`);
+//   },
+// });
+
+const multerStorage = multer.memoryStorage();
+
+const multerFilter = (req, file, cb) => {
+  if (file.mimetype.startsWith('image')) {
+    cb(null, true);
+  } else {
+    cb(new AppError('Not an image, Please upload images only!', 404), false);
+  }
+};
+
+const upload = multer({
+  storage: multerStorage,
+  fileFilter: multerFilter,
+});
+
+exports.uploadUserPhoto = upload.single('photo');
+
+exports.resizeUserPhoto = catchAsync(async (req, res, next) => {
+  if (!req.file) return next();
+  req.file.filename = `user-${req.user.id}-${Date.now()}.jpeg`;
+
+  await sharp(req.file.buffer)
+    .resize(500, 500)
+    .toFormat('jpeg')
+    .jpeg({ quality: 90 })
+    .toFile(`public/img/users/${req.file.filename}`);
+});
 
 const filterObj = (obj, ...allowedFields) => {
   const newObj = {};
@@ -13,97 +54,12 @@ const filterObj = (obj, ...allowedFields) => {
   return newObj;
 };
 
-exports.getAllusers = catchAsync(async (req, res, next) => {
-  const users = await User.find();
-
-  res.status(200).json({
-    status: 'success',
-    results: users.length,
-    data: {
-      users,
-    },
-  });
-});
-
-exports.getOneUser = (req, res) => {
-  const { id } = req.params;
-  const item = users.find((item) => item._id === id);
-
-  if (!item) {
-    return res.status(404).json({ message: 'Item not found' });
-  }
-
-  res.status(200).json({
-    status: 'success',
-    data: {
-      item,
-    },
-  });
+exports.getMe = (req, res, next) => {
+  req.params.id = req.user.id;
+  next();
 };
 
-exports.createUser = (req, res) => {
-  const newId = uuidv4();
-  const newItem = { _id: newId, ...req.body };
-  users.push(newItem);
-
-  fs.writeFileSync(
-    `${__dirname}/../dev-data/data/users.json`,
-    JSON.stringify(users),
-    (err) => {
-      res.status(201).json({
-        status: 'success',
-        data: {
-          user: newItem,
-        },
-      });
-    },
-  );
-
-  res.status(201).json({
-    status: 'success',
-    data: {
-      user: newItem,
-    },
-  });
-};
-
-exports.updateUser = (req, res) => {
-  const item = users.find((item) => item._id === req.params.id);
-  if (!item) {
-    return res.status(404).json({
-      status: 'failed',
-      message: 'Invalid Id',
-    });
-  }
-  const { id } = req.params;
-  const index = users.findIndex((item) => item._id === id);
-  const updatedItem = { _id: id, ...req.body };
-
-  if (index !== -1) {
-    // Update the item at the found index with the updated data
-    users[index] = { ...users[index], ...updatedItem };
-    fs.writeFileSync(
-      `${__dirname}/../dev-data/data/users.json`,
-      JSON.stringify(users),
-      (err) => {
-        res.status(201).json({
-          status: 'success',
-          data: {
-            user: newItem,
-          },
-        });
-      },
-    );
-    res.status(200).json({
-      status: 'success',
-      data: {
-        user: users[index],
-      },
-    }); // Return the updated item
-  } else {
-    res.status(404).json({ error: 'Item not found' }); // Handle the case when the item is not found
-  }
-};
+exports.getAllusers = factory.getAll(User);
 
 exports.updateMe = catchAsync(async (req, res, next) => {
   // check iff pass and conffirm password are provided in body
@@ -118,6 +74,7 @@ exports.updateMe = catchAsync(async (req, res, next) => {
 
   //get user
   const filterBody = filterObj(req.body, 'name', 'email');
+  if (req.file) filterBody.photo = req.file.filename;
   const updatedUser = await User.findByIdAndUpdate(req.user.id, filterBody, {
     new: true,
     runValidators: true,
@@ -140,37 +97,6 @@ exports.deleteMe = catchAsync(async (req, res, next) => {
   });
 });
 
-exports.deleteUser = (req, res) => {
-  const item = users.find((item) => item._id === req.params.id);
-  if (!item) {
-    return res.status(404).json({
-      status: 'failed',
-      message: 'Invalid Id',
-    });
-  }
-  const { id } = req.params;
-  const index = users.findIndex((item) => item._id === id);
-
-  if (index !== -1) {
-    // Remove the item at the found index
-    users.splice(index, 1);
-    fs.writeFileSync(
-      `${__dirname}/../dev-data/data/users.json`,
-      JSON.stringify(users),
-      (err) => {
-        res.status(201).json({
-          status: 'success',
-          data: {
-            user: newItem,
-          },
-        });
-      },
-    );
-    res.status(204).json({
-      status: 'success',
-      message: 'deleted',
-    }); // Return a 204 No Content response
-  } else {
-    res.status(404).json({ error: 'Item not found' }); // Handle the case when the item is not found
-  }
-};
+exports.getOneUser = factory.getOne(User);
+exports.updateUser = factory.updateOne(User);
+exports.deleteUser = factory.deleteOne(User);
