@@ -11,6 +11,7 @@ const userRouter = require('./routes/usersRoutes');
 const tourRouter = require('./routes/tourRoutes');
 const viewRouter = require('./routes/viewRoutes');
 const reviewRouter = require('./routes/reviewRoutes');
+const bookingRouter = require('./routes/bookingRoutes');
 const globalErrorController = require('./controller/errorController');
 const AppError = require('./utils/appError');
 
@@ -61,6 +62,7 @@ const loggerMiddleware = (req, res, next) => {
 //test middleware
 app.use((req,res,next)=>{
   req.requestTime = new Date().toISOString();
+  res.setHeader('Access-Control-Allow-Origin', 'http://127.0.0.1:3000/');
   // console.log(req.cookies);
   next();
 })
@@ -72,6 +74,7 @@ app.use('/', viewRouter);
 app.use('/api/v1/tours', tourRouter);
 app.use('/api/v1/users', userRouter);
 app.use('/api/v1/reviews', reviewRouter);
+app.use('/api/v1/bookings', bookingRouter);
 
 //route to handle all unidentified routes
 app.all('*', (req, res, next) => {

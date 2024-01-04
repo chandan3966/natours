@@ -15,6 +15,9 @@ viewRouter.get(
 viewRouter.get('/login', authController.isLoggedIn, viewController.showLogin);
 viewRouter.get('/me', authController.protect, viewController.getAccount);
 
+viewRouter.get('/my-tours', authController.protect, viewController.getMyTours);
+
+
 viewRouter.post(
   '/submit-user-data',
   authController.protect,
